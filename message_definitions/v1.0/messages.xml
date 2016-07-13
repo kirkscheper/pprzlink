@@ -3044,6 +3044,30 @@
      <field name="msg" type="uint8[]"/>
    </message>
 
+   <message name="IMCU_OPTICFLOW" id="115">
+     <field name="flow_x" type="int16" unit="rad/s"/>
+     <field name="flow_y" type="int16" unit="rad/s"/>
+     <field name="div_x" type="int16" unit="rad/s"/>
+     <field name="div_y" type="int16" unit="rad/s"/>
+   </message>
+
+   <message name="IMCU_STEREO_VELOCITY" id="116">
+     <field name="agl" type="uint16" unit="m">average distance to scene in front of camera</field>
+     <field name="vel_x_global" type="int16" unit="m/s">velocity estimaed using edgeflow and global distance estimate</field>
+     <field name="vel_y_global" type="int16" unit="m/s"/>
+     <field name="vel_z_global" type="int16" unit="m/s"/>
+     <field name="vel_x_pixelwise" type="int16" unit="m/s"/>velocity estimaed using edgeflow and stereo image column distance estimate</field>
+     <field name="vel_y_pixelwise" type="int16" unit="m/s"/>
+     <field name="vel_z_pixelwise" type="int16" unit="m/s"/>
+   </message>
+
+   <message name="IMCU_STEREO_ARRAY" id="117">
+     <field name="type" type="uint8"values="DIST_MATRIX|HISTOGRAM|DISPARITY_MAP"/>
+     <field name="width" type="uint8">matrix parameters</field>
+     <field name="hieght" type="uint8"/>
+     <field name="data" type="uint8[]"/>
+   </message>
+
   </msg_class>
 
 </protocol>
