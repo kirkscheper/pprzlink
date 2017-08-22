@@ -46,68 +46,70 @@
 
 #define STX_LOG  0x99
 
+static struct pprzlog_transport * get_pprzlog_trans(struct pprzlink_msg *msg)
+{
+  return (struct pprzlog_transport *)(msg->trans->impl);
+}
+
 static void accumulate_checksum(struct pprzlog_transport *trans, const uint8_t byte)
 {
   trans->ck += byte;
 }
 
-static void put_bytes(struct pprzlog_transport *trans, struct link_device *dev, long fd,
+static void put_bytes(struct pprzlink_msg *msg, long fd,
                       enum TransportDataType type __attribute__((unused)), enum TransportDataFormat format __attribute__((unused)),
                       const void *bytes, uint16_t len)
 {
   const uint8_t *b = (const uint8_t *) bytes;
   int i;
   for (i = 0; i < len; i++) {
-    accumulate_checksum(trans, b[i]);
+    accumulate_checksum(get_pprzlog_trans(msg), b[i]);
   }
-  dev->put_buffer(dev->periph, fd, b, len);
+  msg->dev->put_buffer(msg->dev->periph, fd, b, len);
 }
 
-static void put_named_byte(struct pprzlog_transport *trans, struct link_device *dev, long fd,
+static void put_named_byte(struct pprzlink_msg *msg, long fd,
                            enum TransportDataType type __attribute__((unused)), enum TransportDataFormat format __attribute__((unused)),
                            uint8_t byte, const char *name __attribute__((unused)))
 {
-  accumulate_checksum(trans, byte);
-  dev->put_byte(dev->periph, fd, byte);
+  accumulate_checksum(get_pprzlog_trans(trans), byte);
+  msg->dev->put_byte(msg->dev->periph, fd, byte);
 }
 
-static uint8_t size_of(struct pprzlog_transport *trans __attribute__((unused)), uint8_t len)
+static uint8_t size_of(struct pprzlink_msg *msg __attribute__((unused)), uint8_t len)
 {
   // add offset: STX(1), LENGTH(1), SOURCE(1), TIMESTAMP(4), CHECKSUM(1)
   return len + 8;
 }
 
-static void start_message(struct pprzlog_transport *trans, struct link_device *dev, long fd, uint8_t payload_len)
+static void start_message(struct pprzlink_msg *msg, long fd, uint8_t payload_len)
 {
-  dev->put_byte(dev->periph, fd, STX_LOG);
+  msg->dev->put_byte(msg->dev->periph, fd, STX_LOG);
   const uint8_t msg_len = payload_len; // only the payload length here
-  trans->ck = 0;
+  get_pprzlog_trans(msg)->ck = 0;
   uint8_t buf[] = { msg_len, 0 }; // TODO use correct source ID
-  put_bytes(trans, dev, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, buf, 2);
-  uint32_t ts = trans->get_time_usec() / 100;
-  put_bytes(trans, dev, fd, DL_TYPE_TIMESTAMP, DL_FORMAT_SCALAR, (uint8_t *)(&ts), 4);
+  put_bytes(msg, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, buf, 2);
+  uint32_t ts = get_pprzlog_trans(msg)->get_time_usec() / 100;
+  put_bytes(msg, fd, DL_TYPE_TIMESTAMP, DL_FORMAT_SCALAR, (uint8_t *)(&ts), 4);
 }
 
-static void end_message(struct pprzlog_transport *trans, struct link_device *dev, long fd)
+static void end_message(struct pprzlink_msg *msg, long fd)
 {
-  dev->put_byte(dev->periph, fd, trans->ck);
-  dev->send_message(dev->periph, fd);
+  msg->dev->put_byte(msg->dev->periph, fd, get_pprzlog_trans(msg)->ck);
+  msg->dev->send_message(msg->dev->periph, fd);
 }
 
-static void overrun(struct pprzlog_transport *trans __attribute__((unused)),
-                    struct link_device *dev __attribute__((unused)))
-{
-}
-
-static void count_bytes(struct pprzlog_transport *trans __attribute__((unused)),
-                        struct link_device *dev __attribute__((unused)), uint8_t bytes __attribute__((unused)))
+static void overrun(struct pprzlink_msg *msg __attribute__((unused)))
 {
 }
 
-static int check_available_space(struct pprzlog_transport *trans __attribute__((unused)), struct link_device *dev, long *fd,
-                                 uint16_t bytes)
+static void count_bytes(struct pprzlink_msg *msg __attribute__((unused)), uint8_t bytes __attribute__((unused)))
 {
-  return dev->check_free_space(dev->periph, fd, bytes);
+}
+
+static int check_available_space(struct pprzlink_msg *msg, long *fd, uint16_t bytes)
+{
+  return msg->dev->check_free_space(msg->dev->periph, fd, bytes);
 }
 
 void pprzlog_transport_init(struct pprzlog_transport *t, get_time_usec_t get_time_usec)

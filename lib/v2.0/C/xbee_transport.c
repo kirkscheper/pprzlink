@@ -46,6 +46,7 @@
 #define XBEE_24_TX_ID 0x01 /* 16 bits address */
 #define XBEE_24_RX_ID 0x81 /* 16 bits address */
 #define XBEE_24_RFDATA_OFFSET 5
+#define XBEE_24_ADDR_OFFSET 2
 #define XBEE_24_TX_OVERHEAD 4
 #define XBEE_24_TX_HEADER { \
     XBEE_24_TX_ID, \
@@ -59,6 +60,7 @@
 #define XBEE_868_TX_ID 0x10
 #define XBEE_868_RX_ID 0x90
 #define XBEE_868_RFDATA_OFFSET 12
+#define XBEE_868_ADDR_OFFSET 8
 #define XBEE_868_TX_OVERHEAD 13
 #define XBEE_868_TX_HEADER { \
     XBEE_868_TX_ID, \
@@ -90,81 +92,104 @@
 
 /** Xbee protocol implementation */
 
+static struct xbee_transport * get_xbee_trans(struct pprzlink_msg *msg)
+{
+  return (struct xbee_transport *)(msg->trans->impl);
+}
+
+/** set destination address in XBEE header
+ * if 0xFF is passed, set XBEE broadcast (0xFFFF)
+ * if 0x0 is passed, set default ground station address (0x100)
+ */
+static void set_xbee_receiver_addr(uint8_t *buf, uint8_t offset, uint8_t addr)
+{
+  uint16_t receiver = 0;
+  if (addr == 0x0) {
+    receiver = GROUND_STATION_ADDR;
+  } else if (addr == 0xFF) {
+    receiver = 0xFFFF;
+  } else {
+    receiver = (uint16_t) addr;
+  }
+  buf[offset] = (receiver >> 8);
+  buf[offset+1] = (receiver & 0xFF);
+}
+
 static void accumulate_checksum(struct xbee_transport *trans, const uint8_t byte)
 {
   trans->cs_tx += byte;
 }
 
-static void put_bytes(struct xbee_transport *trans, struct link_device *dev, long fd,
+static void put_bytes(struct pprzlink_msg *msg, long fd,
                       enum TransportDataType type __attribute__((unused)), enum TransportDataFormat format __attribute__((unused)),
                       const void *bytes, uint16_t len)
 {
   const uint8_t *b = (const uint8_t *) bytes;
   int i;
   for (i = 0; i < len; i++) {
-    accumulate_checksum(trans, b[i]);
+    accumulate_checksum(get_xbee_trans(msg), b[i]);
   }
-  dev->put_buffer(dev->periph, fd, b, len);
+  msg->dev->put_buffer(msg->dev->periph, fd, b, len);
 }
 
-static void put_named_byte(struct xbee_transport *trans, struct link_device *dev, long fd,
+static void put_named_byte(struct pprzlink_msg *msg, long fd,
                            enum TransportDataType type __attribute__((unused)), enum TransportDataFormat format __attribute__((unused)),
                            uint8_t byte, const char *name __attribute__((unused)))
 {
-  accumulate_checksum(trans, byte);
-  dev->put_byte(dev->periph, fd, byte);
+  accumulate_checksum(get_xbee_trans(msg), byte);
+  msg->dev->put_byte(msg->dev->periph, fd, byte);
 }
 
-static uint8_t size_of(struct xbee_transport *trans, uint8_t len)
+static uint8_t size_of(struct pprzlink_msg *msg, uint8_t len)
 {
   // message length: payload + API overhead + XBEE TX overhead (868 or 2.4)
-  if (trans->type == XBEE_24) {
+  if (get_xbee_trans(msg)->type == XBEE_24) {
     return len + XBEE_API_OVERHEAD + XBEE_24_TX_OVERHEAD;
   } else {
     return len + XBEE_API_OVERHEAD + XBEE_868_TX_OVERHEAD;
   }
 }
 
-static void start_message(struct xbee_transport *trans, struct link_device *dev, long fd, uint8_t payload_len)
+static void start_message(struct pprzlink_msg *msg, long fd, uint8_t payload_len)
 {
-  dev->nb_msgs++;
-  dev->put_byte(dev->periph, fd, XBEE_START);
+  msg->dev->nb_msgs++;
+  msg->dev->put_byte(msg->dev->periph, fd, XBEE_START);
   const uint16_t len = payload_len + XBEE_API_OVERHEAD;
-  dev->put_byte(dev->periph, fd, (len >> 8));
-  dev->put_byte(dev->periph, fd, (len & 0xff));
-  trans->cs_tx = 0;
-  if (trans->type == XBEE_24) {
-    const uint8_t header[] = XBEE_24_TX_HEADER;
-    put_bytes(trans, dev, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, header, XBEE_24_TX_OVERHEAD + 1);
+  msg->dev->put_byte(msg->dev->periph, fd, (len >> 8));
+  msg->dev->put_byte(msg->dev->periph, fd, (len & 0xff));
+  get_xbee_trans(msg)->cs_tx = 0;
+  if (get_xbee_trans(msg)->type == XBEE_24) {
+    uint8_t header[] = XBEE_24_TX_HEADER;
+    set_xbee_receiver_addr(header, XBEE_24_ADDR_OFFSET, msg->receiver_id);
+    put_bytes(msg, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, header, XBEE_24_TX_OVERHEAD + 1);
   } else {
-    const uint8_t header[] = XBEE_868_TX_HEADER;
-    put_bytes(trans, dev, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, header, XBEE_868_TX_OVERHEAD + 1);
+    uint8_t header[] = XBEE_868_TX_HEADER;
+    set_xbee_receiver_addr(header, XBEE_868_ADDR_OFFSET, msg->receiver_id);
+    put_bytes(msg, fd, DL_TYPE_UINT8, DL_FORMAT_SCALAR, header, XBEE_868_TX_OVERHEAD + 1);
   }
 }
 
-static void end_message(struct xbee_transport *trans, struct link_device *dev, long fd)
+static void end_message(struct pprzlink_msg *msg, long fd)
 {
-  trans->cs_tx = 0xff - trans->cs_tx;
-  dev->put_byte(dev->periph, fd, trans->cs_tx);
-  dev->send_message(dev->periph, fd);
+  get_xbee_trans(msg)->cs_tx = 0xff - get_xbee_trans(msg)->cs_tx;
+  msg->dev->put_byte(msg->dev->periph, fd, get_xbee_trans(msg)->cs_tx);
+  msg->dev->send_message(msg->dev->periph, fd);
 }
 
-static void overrun(struct xbee_transport *trans __attribute__((unused)),
-                    struct link_device *dev __attribute__((unused)))
+static void overrun(struct pprzlink_msg *msg)
 {
-  dev->nb_ovrn++;
+  msg->dev->nb_ovrn++;
 }
 
-static void count_bytes(struct xbee_transport *trans __attribute__((unused)),
-                        struct link_device *dev __attribute__((unused)), uint8_t bytes)
+static void count_bytes(struct pprzlink_msg *msg, uint8_t bytes)
 {
-  dev->nb_bytes += bytes;
+  msg->dev->nb_bytes += bytes;
 }
 
-static int check_available_space(struct xbee_transport *trans __attribute__((unused)), struct link_device *dev, long *fd,
+static int check_available_space(struct pprzlink_msg *msg, long *fd,
                                  uint16_t bytes)
 {
-  return dev->check_free_space(dev->periph, fd, bytes);
+  return msg->dev->check_free_space(msg->dev->periph, fd, bytes);
 }
 
 static bool xbee_text_reply_is_ok(struct link_device *dev)
