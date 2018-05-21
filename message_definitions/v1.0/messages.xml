@@ -2320,6 +2320,18 @@
       <field name="course"  type="int32"  alt_unit="deg" alt_unit_coef="0.0000057296"/>
     </message>
 
+    <message name="REMOTE_GPS_LOCAL" id="56" link="forwarded">
+      <field name="ac_id"   type="uint8"/>
+      <field name="enu_x"   type="int32" unit="cm"   alt_unit="m"/>
+      <field name="enu_y"   type="int32" unit="cm"   alt_unit="m"/>
+      <field name="enu_z"   type="int32" unit="cm"   alt_unit="m"/>
+      <field name="enu_xd"  type="int32" unit="cm/s" alt_unit="m/s"/>
+      <field name="enu_yd"  type="int32" unit="cm/s" alt_unit="m/s"/>
+      <field name="enu_zd"  type="int32" unit="cm/s" alt_unit="m/s"/>
+      <field name="tow"     type="uint32"/>
+      <field name="course"  type="int32" unit="1e7rad" alt_unit="deg" alt_unit_coef="0.0000057296"/>
+    </message>
+
     <message name="KITE_COMMAND" id="96">
       <field name="POWER"     type="uint16"/>
       <field name="TURN"      type="uint16"/>
@@ -2892,6 +2904,16 @@
       <field name="count_disps_right"   type="uint32">Number of pixels with high disparity in the right half of the frame</field>
     </message>
 
+    <message name="STEREOCAM_SNAPSHOT_DIST" id="85">
+      <description>Metric displacement of camera relative to a keyframe. All parameters are in the camera frame</description>
+      <field name="resolution" type="uint8">Resolution of the vel and pos messages</field>
+      <field name="dx"      type="int16" unit="m">Distance traveled since the last keyframe</field>
+      <field name="dy"      type="int16" unit="m"/>
+      <field name="dz"      type="int16" unit="m"/>
+      <field name="RMS"     type="uint8">RMS of the relative position estimate</field>
+      <field name="newKeyframe"     type="uint8">New keyframe taken</field>
+    </message>
+
     <message name="IMCU_DATALINK" id="113">
      <description>Forward FBW datalink to AP</description>
       <field name="msg" type="uint8[]"/>
@@ -2910,6 +2932,10 @@
       <field name="data" type="uint8[]"/>
     </message>
 
+    <message name="IMCU_LR_MEAN_DIST" id="117">
+      <field name="mean_left" type="float" unit="m"/>
+      <field name="mean_right" type="float" unit="m"/>
+    </message>
+
   </msg_class>
-  
 </protocol>
